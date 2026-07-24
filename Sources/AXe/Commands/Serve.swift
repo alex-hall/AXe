@@ -61,6 +61,12 @@ struct Serve: AsyncParsableCommand {
     @Flag(name: .customLong("verbose"), help: "Enable verbose logging to stderr.")
     var verbose: Bool = false
 
+    @Flag(
+        name: .customLong("minimal-keys"),
+        help: "describe-ui fetches only the attributes UI-test drivers consume (label, id, value, frame, role, type, enabled) — attribute reads are per-element XPC round trips, so this roughly halves dump cost."
+    )
+    var minimalKeys: Bool = false
+
     func validate() throws {
         guard typeChunkSize > 0 else {
             throw ValidationError("--type-chunk-size must be greater than 0.")
@@ -106,11 +112,26 @@ struct Serve: AsyncParsableCommand {
         case "ping":
             Self.emit(["ok": true, "pong": true])
 
+        case "describe-probe":
+            // Structural change probe: frames/type/value/id only — no label
+            // reads (labels are the priciest per-element XPC attributes).
+            // Clients hash the result to detect screen changes cheaply and
+            // fetch the full tree only when the hash moves.
+            let probeData = try await AccessibilityFetcher.fetchAccessibilityInfoJSONData(
+                for: simulatorUDID,
+                point: nil,
+                logger: logger,
+                keys: [.frameDict, .type, .value, .uniqueID]
+            )
+            let probeTree = try JSONSerialization.jsonObject(with: probeData)
+            Self.emit(["ok": true, "tree": probeTree])
+
         case "describe-ui":
             let data = try await AccessibilityFetcher.fetchAccessibilityInfoJSONData(
                 for: simulatorUDID,
                 point: nil,
-                logger: logger
+                logger: logger,
+                keys: minimalKeys ? AccessibilityFetcher.minimalRequestKeys : nil
             )
             // The fetcher pretty-prints; the protocol is one line per response,
             // so re-serialize compact and embed under "tree".
