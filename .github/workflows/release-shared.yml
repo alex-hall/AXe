@@ -179,7 +179,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$DEVELOPER_ID_APPLICATION_P12" ]; then
-            if [ "${{ steps.context.outputs.publishRelease }}" = "true" ]; then
+            # A publishing run without a certificate is only allowed on the
+            # unsigned lane (build output shipped as-is; the Homebrew formula
+            # ad-hoc re-signs on install).
+            if [ "${{ steps.context.outputs.publishRelease }}" = "true" ] && [ "${{ steps.context.outputs.stageSource }}" != "build-output" ]; then
               echo "❌ Code signing certificate is required for publishing runs"
               exit 1
             fi
