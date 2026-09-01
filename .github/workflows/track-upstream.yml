@@ -46,6 +46,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin serve-mode release
+          old_serve=$(git rev-parse origin/serve-mode)
           git checkout -B serve-mode origin/serve-mode
           if git merge-base --is-ancestor "$TAG" serve-mode; then
             echo "serve-mode already includes $TAG"
@@ -55,13 +56,14 @@ jobs:
             git rebase --onto "$TAG" "$base" serve-mode
             git push --force-with-lease origin serve-mode
           fi
+          # The release lane is whatever release carries beyond the serve-mode
+          # tip it was built on — replay exactly those onto the new tip.
           git checkout -B release origin/release
-          old_base=$(git merge-base release origin/serve-mode@{1} 2>/dev/null || git merge-base release serve-mode)
           if git merge-base --is-ancestor serve-mode release; then
             echo "release already includes serve-mode"
           else
-            echo "rebasing $(git rev-list --count "$old_base"..release) release-lane commit(s) onto serve-mode"
-            git rebase --onto serve-mode "$old_base" release
+            echo "rebasing $(git rev-list --count "$old_serve"..release) release-lane commit(s) onto serve-mode"
+            git rebase --onto serve-mode "$old_serve" release
             git push --force-with-lease origin release
           fi
 
