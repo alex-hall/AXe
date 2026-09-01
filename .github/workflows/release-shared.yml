@@ -52,6 +52,12 @@ jobs:
 
       - name: Resolve release context
         id: context
+        env:
+          # Without notarization secrets the release ships the build output
+          # (the formula ad-hoc re-signs); without a tap token the tap is
+          # left to update itself from the published release.
+          AXE_STAGE_SOURCE: ${{ secrets.NOTARIZE_APP_STORE_CONNECT_API_KEY == '' && 'build-output' || 'notarized-package' }}
+          AXE_UPDATE_TAP: ${{ secrets.HOMEBREW_TAP_TOKEN == '' && 'none' || 'auto' }}
         run: |
           COMMIT_SHA=$(git rev-parse HEAD)
           node scripts/release-context.mjs \
