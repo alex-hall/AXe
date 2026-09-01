@@ -10,6 +10,11 @@ on:
         description: 'Existing tag to build and verify (e.g., v1.0.43)'
         required: true
         type: string
+      publish:
+        description: 'Publish the GitHub release for that tag (a tag pushed by a workflow never fires the push trigger, so the tracking workflow ships this way)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -20,5 +25,5 @@ jobs:
     uses: ./.github/workflows/release-shared.yml
     secrets: inherit
     with:
-      mode: ${{ github.event_name == 'push' && 'production-shipping' || 'production-verify' }}
+      mode: ${{ (github.event_name == 'push' || inputs.publish) && 'production-shipping' || 'production-verify' }}
       requested_ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}

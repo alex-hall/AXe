@@ -132,9 +132,17 @@ function buildContext({ mode, requestedRef, commitSha, runNumber }) {
       prerelease: prerelease ? 'true' : 'false',
       publishRelease: mode === 'production-shipping' ? 'true' : 'false',
       uploadArtifacts: mode === 'production-verify' ? 'true' : 'false',
-      updateTapTarget: mode === 'production-shipping' ? (prerelease ? 'staging' : 'production') : 'none',
+      // A fork without the tap token skips the tap update (AXE_UPDATE_TAP=none)
+      // and one without Apple signing/notarization secrets ships the build
+      // output as-is (AXE_STAGE_SOURCE=build-output); the Homebrew formula
+      // ad-hoc re-signs on install either way. Both are set by the workflow
+      // from which secrets exist, so upstream's behaviour is unchanged.
+      updateTapTarget:
+        process.env.AXE_UPDATE_TAP === 'none'
+          ? 'none'
+          : mode === 'production-shipping' ? (prerelease ? 'staging' : 'production') : 'none',
       notesMode: mode === 'production-shipping' ? 'changelog' : 'none',
-      stageSource: 'notarized-package',
+      stageSource: process.env.AXE_STAGE_SOURCE === 'build-output' ? 'build-output' : 'notarized-package',
       releaseTarget: commitSha,
     };
   }
