@@ -1,0 +1,84 @@
+name: Track upstream
+
+# Keeps this fork riding on upstream AXe's newest release without anyone doing
+# it by hand. Two branches:
+#   serve-mode  upstream's newest stable tag + the serve commits (what the
+#               upstream PR is made of — nothing fork-specific)
+#   release     serve-mode + the fork's release lane (unsigned publish, no tap
+#               token); the branch tags are cut from
+# Each run rebases both, tags release as <tag>-serve.N and ships it. A rebase
+# that does not apply cleanly fails here, which is the one moment a person is
+# needed. Lives on main because scheduled workflows run from the default
+# branch.
+on:
+  schedule:
+    - cron: '17 9 * * 1' # Mondays 09:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  rebase-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Find upstream's newest stable tag
+        id: upstream
+        run: |
+          git remote add upstream https://github.com/cameroncooke/AXe.git
+          git fetch --tags upstream
+          latest=$(git tag --list 'v*' --sort=-v:refname | grep -Ev -- '-' | head -1)
+          [ -n "$latest" ] || { echo "no upstream v* tag found"; exit 1; }
+          echo "tag=$latest" >> "$GITHUB_OUTPUT"
+          echo "newest stable upstream tag: $latest"
+
+      - name: Rebase serve-mode, then release, onto it
+        id: rebase
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin serve-mode release
+          git checkout -B serve-mode origin/serve-mode
+          if git merge-base --is-ancestor "$TAG" serve-mode; then
+            echo "serve-mode already includes $TAG"
+          else
+            base=$(git merge-base serve-mode upstream/main)
+            echo "rebasing $(git rev-list --count "$base"..serve-mode) serve commit(s) from $base onto $TAG"
+            git rebase --onto "$TAG" "$base" serve-mode
+            git push --force-with-lease origin serve-mode
+          fi
+          git checkout -B release origin/release
+          old_base=$(git merge-base release origin/serve-mode@{1} 2>/dev/null || git merge-base release serve-mode)
+          if git merge-base --is-ancestor serve-mode release; then
+            echo "release already includes serve-mode"
+          else
+            echo "rebasing $(git rev-list --count "$old_base"..release) release-lane commit(s) onto serve-mode"
+            git rebase --onto serve-mode "$old_base" release
+            git push --force-with-lease origin release
+          fi
+
+      - name: Tag and ship a serve prerelease when none points at release
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git checkout release
+          existing=$(git tag --list "${TAG}-serve.*" --sort=-v:refname | head -1)
+          if [ -n "$existing" ] && [ "$(git rev-parse "$existing^{commit}")" = "$(git rev-parse release)" ]; then
+            echo "$existing already points at release — nothing to ship"
+            exit 0
+          fi
+          n=$(( $(git tag --list "${TAG}-serve.*" | wc -l) + 1 ))
+          new="${TAG}-serve.${n}"
+          git tag "$new" release
+          git push origin "$new"
+          echo "tagged $new; dispatching the release workflow (a token-pushed tag fires no push trigger)"
+          gh workflow run release.yml --ref "$new" -f tag="$new" -f publish=true
