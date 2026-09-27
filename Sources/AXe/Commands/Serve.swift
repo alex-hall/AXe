@@ -108,6 +108,11 @@ struct Serve: AsyncParsableCommand {
             return
         }
 
+        if verb != "ping" {
+            // AXPTranslator can reuse stale element types after a simulator UI change.
+            try await Self.clearAccessibilityElementCache()
+        }
+
         switch verb {
         case "ping":
             Self.emit(["ok": true, "pong": true])
@@ -175,6 +180,19 @@ struct Serve: AsyncParsableCommand {
         }
         tokens.removeSubrange(index...(index + 1))
         return value
+    }
+
+    @MainActor
+    private static func clearAccessibilityElementCache() throws {
+        guard let translatorClass = NSClassFromString("AXPTranslator_macOS"),
+              let translator = (translatorClass as AnyObject)
+                .perform(NSSelectorFromString("sharedInstance"))?
+                .takeUnretainedValue() as? NSObject,
+              let cache = translator.perform(NSSelectorFromString("fakeElementCache"))?
+                .takeUnretainedValue() as? NSMutableDictionary else {
+            throw CLIError(errorDescription: "AXe could not refresh the accessibility cache.")
+        }
+        cache.removeAllObjects()
     }
 
     /// One compact JSON line, written unbuffered — stdout may be a pipe, and
