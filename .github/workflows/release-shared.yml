@@ -77,11 +77,16 @@ jobs:
           TAG="${{ steps.context.outputs.releaseTag }}"
           git fetch --force --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
           NOTES_FROM=$(scripts/release-notes-from.sh "$TAG")
+          # The fork's unsigned lane ships <upstream>-serve.N, which has no CHANGELOG
+          # section of its own: it reads the upstream version's notes, or the newest
+          # older section when that patch release reused earlier notes.
+          NOTES_VERSION="${{ steps.context.outputs.version }}"
+          if [ "${{ steps.context.outputs.stageSource }}" = "build-output" ]; then NOTES_VERSION="${NOTES_VERSION%-serve.*}"; NOTES_FALLBACK=newest-older; else NOTES_FALLBACK=none; fi
           echo "notes_from=$NOTES_FROM" >> "$GITHUB_OUTPUT"
           node scripts/generate-github-release-notes.mjs \
             --channel "${{ steps.context.outputs.channel }}" \
-            --version "${{ steps.context.outputs.version }}" \
-            --fallback none \
+            --version "$NOTES_VERSION" \
+            --fallback "$NOTES_FALLBACK" \
             ${NOTES_FROM:+--notes-from "$NOTES_FROM"} \
             --ref "${{ inputs.requested_ref }}" \
             --commit-sha "${{ steps.context.outputs.commitSha }}" \
@@ -379,10 +384,12 @@ jobs:
         if: steps.context.outputs.notesMode != 'none'
         run: |
           NOTES_FROM="${{ steps.notes_source.outputs.notes_from }}"
+          NOTES_VERSION="${{ steps.context.outputs.version }}"
+          if [ "${{ steps.context.outputs.stageSource }}" = "build-output" ]; then NOTES_VERSION="${NOTES_VERSION%-serve.*}"; NOTES_FALLBACK=newest-older; else NOTES_FALLBACK=none; fi
           node scripts/generate-github-release-notes.mjs \
             --channel "${{ steps.context.outputs.channel }}" \
-            --version "${{ steps.context.outputs.version }}" \
-            --fallback none \
+            --version "$NOTES_VERSION" \
+            --fallback "$NOTES_FALLBACK" \
             ${NOTES_FROM:+--notes-from "$NOTES_FROM"} \
             --ref "${{ inputs.requested_ref }}" \
             --commit-sha "${{ steps.context.outputs.commitSha }}" \
