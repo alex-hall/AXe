@@ -83,4 +83,4 @@ jobs:
           git tag "$new" release
           git push origin "$new"
           echo "tagged $new; dispatching the release workflow (a token-pushed tag fires no push trigger)"
-          gh workflow run release.yml --ref "$new" -f tag="$new" -f publish=true
+          gh workflow run release.yml -R "$GITHUB_REPOSITORY" --ref "$new" -f tag="$new" -f publish=true
