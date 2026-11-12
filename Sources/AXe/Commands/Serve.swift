@@ -83,7 +83,12 @@ struct Serve: AsyncParsableCommand {
         let logger = AxeLogger(writeToStdErr: verbose)
         try await setup(logger: logger)
         try await performGlobalSetup(logger: logger)
+        try await serveLoop(logger: logger)
+    }
 
+    /// The batch runner and step parser are main-actor types; the loop runs there too.
+    @MainActor
+    private func serveLoop(logger: AxeLogger) async throws {
         let session = try await HIDInteractor.makeSession(for: simulatorUDID, logger: logger)
         let runner = BatchPlanRunner(session: session, logger: logger)
 
@@ -101,6 +106,7 @@ struct Serve: AsyncParsableCommand {
         }
     }
 
+    @MainActor
     private func handle(_ line: String, runner: BatchPlanRunner, logger: AxeLogger) async throws {
         var tokens = try ShellTokenizer.tokenize(line)
         guard let verb = tokens.first else {
